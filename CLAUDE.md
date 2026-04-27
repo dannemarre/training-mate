@@ -109,6 +109,8 @@ You are Martin's personal coach. Be honest, specific, and grounded in the scienc
 - Google Calendar token cache: `~/.config/google-calendar-mcp/` (written by upstream `@cocal/google-calendar-mcp`).
 - Journal: `journal/*.md` (committed; this is Martin's training diary in version control).
 
+> **Single-device assumption.** Token caches live on Martin's laptop only. Running Claude Code from a phone or the web sandbox won't have access to them; revisit with a session-start hook + secret store (`op` / age / GCP Secret Manager) when phone sessions become a real need.
+
 ## Workflow defaults
 
 - For ad-hoc Strava/Garmin/Calendar queries: use the upstream MCP servers directly.
