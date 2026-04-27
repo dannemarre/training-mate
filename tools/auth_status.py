@@ -50,15 +50,18 @@ def strava_status() -> dict:
 
 
 def garmin_status() -> dict:
-    oauth1, oauth2, profile = garmin_token_paths()
+    oauth1, oauth2, profile, modern = garmin_token_paths()
     profile_data: dict | None = None
     if profile.exists():
         try:
             profile_data = json.loads(profile.read_text())
         except json.JSONDecodeError:
             profile_data = None
+    legacy_pair = oauth1.exists() and oauth2.exists()
     return {
-        "ok": oauth1.exists() and oauth2.exists(),
+        "ok": modern.exists() or legacy_pair,
+        "format": "modern" if modern.exists() else ("legacy" if legacy_pair else None),
+        "modern_present": modern.exists(),
         "oauth1_present": oauth1.exists(),
         "oauth2_present": oauth2.exists(),
         "profile": profile_data,

@@ -316,31 +316,43 @@ def strava_client():  # type: ignore[no-untyped-def]
     return client, tokens
 
 
-def garmin_token_paths() -> tuple[Path, Path, Path]:
+def garmin_token_paths() -> tuple[Path, Path, Path, Path]:
+    """Return (legacy_oauth1, legacy_oauth2, legacy_profile, modern_tokens).
+
+    python-garminconnect ≥ 0.3.3 writes a single `garmin_tokens.json`. The
+    legacy garth-style pair is still recognised so old caches keep working
+    until they expire.
+    """
     return (
         GARMIN_TOKEN_DIR / "oauth1_token.json",
         GARMIN_TOKEN_DIR / "oauth2_token.json",
         GARMIN_TOKEN_DIR / "profile.json",
+        GARMIN_TOKEN_DIR / "garmin_tokens.json",
     )
 
 
-def garmin_client():  # type: ignore[no-untyped-def]
-    """Return a garminconnect.Garmin client resumed from ~/.garmin-mcp/.
+def garmin_tokens_present() -> bool:
+    """True if either the modern or legacy Garmin token cache is on disk."""
+    oauth1, oauth2, _profile, modern = garmin_token_paths()
+    return modern.exists() or (oauth1.exists() and oauth2.exists())
 
-    The TS upstream MCP server writes garth-compatible oauth1_token.json + oauth2_token.json,
-    so garth.resume() works directly.
+
+def garmin_client():  # type: ignore[no-untyped-def]
+    """Return a logged-in garminconnect.Garmin resumed from ~/.garmin-mcp/.
+
+    Uses python-garminconnect ≥ 0.3.3's native SSO (matin/garth was deprecated
+    2026-03-28). `Garmin().login(tokenstore=...)` loads from a directory that
+    can hold either the modern `garmin_tokens.json` or the legacy garth pair.
     """
     from garminconnect import Garmin  # type: ignore[import-not-found]
 
-    oauth1, oauth2, _profile = garmin_token_paths()
-    if not oauth1.exists() or not oauth2.exists():
+    if not garmin_tokens_present():
         raise RuntimeError(
             "Garmin tokens missing under ~/.garmin-mcp/. Run setup once: "
-            "`GARMIN_EMAIL=… GARMIN_PASSWORD=… npx -y @nicolasvegam/garmin-connect-mcp setup` "
-            "and complete the MFA prompt."
+            "`uv run python tools/garmin_auth_setup.py` (interactive — needs MFA)."
         )
-    client = Garmin()
-    client.login(str(GARMIN_TOKEN_DIR))  # garth.resume under the hood
+    client = Garmin(retry_attempts=1)
+    client.login(tokenstore=str(GARMIN_TOKEN_DIR))
     return client
 
 
