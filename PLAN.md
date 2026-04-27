@@ -16,32 +16,22 @@ Companion files: `CLAUDE.md` (athlete + rules), `docs/*.md` (curated knowledge),
   - Google Calendar wired into `.mcp.json` (`@cocal/google-calendar-mcp`); `tools/auth_status.py` extended to report Calendar token state. `TM_CALENDAR_NAME` env var (Martin's calendar is `Training Mate`).
   - `journal/` scaffolded: `README.md`, `_template-plan.md`, `_template-log.md`.
   - `.claude/commands/plan-week.md`, `.claude/commands/log.md` — first two slash commands.
-- **M1.75 — auth bring-up on Mac (this session).**
-  - Strava: API app created (Client ID `231461`, callback domain `localhost`); manual curl-based OAuth flow → tokens at `~/.config/strava-mcp/config.json`. **Confirmed working via MCP** (`mcp__strava__check-strava-connection` returns "Connected to Strava as Martin Dannelind").
-  - Google Calendar: OAuth dance complete → `tokens.json` at `~/.config/google-calendar-mcp/`. **Calendar MCP fails to register tools without env-propagation fix** — see Risks & gotchas.
-  - Garmin: blocked. SSO 429-throttled by retry-loop from empty-env `garmin-connect-mcp`; `garth` library deprecated 2026-03-28 anyway. Migration to non-garth `python-garminconnect>=0.3.3` pending.
-  - **Bug fix landed (commit `b11809a`):** `tools/_common.py` now reads camelCase keys from `~/.config/strava-mcp/config.json` (matching upstream).
-  - **Architecture audit done.** MCP servers are second-class (ad-hoc only), CLI tools are primary. Direnv adopted for env propagation. See Resolved decisions.
+- **M1.75 — auth bring-up on Mac. DONE (2026-04-27).** All three providers green: `strava.ok=True`, `garmin.ok=True (format: modern)`, `google_calendar.ok=True`. Three commits on `main`:
+  - `b11809a` — `tools/_common.py` reads camelCase keys from upstream `~/.config/strava-mcp/config.json`.
+  - `33cbf4e` — Architecture audit: direnv adopted, Garmin MCP demoted, garth deprecation captured.
+  - `1a321d0` — Garmin auth via `python-garminconnect>=0.3.3` modern format (single `garmin_tokens.json`); new `tools/garmin_auth_setup.py` for durable re-auth.
 
-**Pending user setup (do these on Martin's Mac, in order):**
-1. **direnv** (one-time, replaces ad-hoc shell sourcing):
-   ```
-   brew install direnv
-   echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
-   source ~/.zshrc
-   cd /Users/martin/Documents/github/training-mate
-   direnv allow
-   ```
-   Repo's `.envrc` (committed) just contains `dotenv`, so `cd` into the repo loads `.env` automatically.
-2. **OAuth credentials** (already done this session — keep for fresh-clone reference):
+**Setup checklist for fresh clones (or new machines):**
+1. **direnv** (one-time): `brew install direnv` + `echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc` + `direnv allow` in the repo. Repo's `.envrc` (committed) sources `.env`.
+2. **OAuth credentials:**
    - `mv ~/Downloads/client_secret_*.json ~/.config/google-calendar-mcp/gcp-oauth.keys.json && chmod 600 …`
    - `cp .env.example .env`; fill in Strava + Garmin + Google credentials. `chmod 600 .env`.
-3. **First-time Strava OAuth:** open `https://www.strava.com/oauth/authorize?client_id=$STRAVA_CLIENT_ID&response_type=code&redirect_uri=http%3A%2F%2Flocalhost&approval_prompt=force&scope=profile%3Aread_all%2Cactivity%3Aread_all%2Cactivity%3Aread%2Cprofile%3Awrite` in browser, copy `code` from redirect URL, exchange via curl + persist to `~/.config/strava-mcp/config.json` (camelCase keys).
+3. **First-time Strava OAuth:** open `https://www.strava.com/oauth/authorize?client_id=$STRAVA_CLIENT_ID&response_type=code&redirect_uri=http%3A%2F%2Flocalhost&approval_prompt=force&scope=profile%3Aread_all%2Cactivity%3Aread_all%2Cactivity%3Aread%2Cprofile%3Awrite` in browser, copy `code` from redirect URL, exchange via curl + persist to `~/.config/strava-mcp/config.json` (camelCase keys: `clientId`, `clientSecret`, `accessToken`, `refreshToken`, `expiresAt`).
 4. **First-time Google Calendar OAuth:** `npx -y @cocal/google-calendar-mcp auth`, complete browser dance.
-5. **First-time Garmin auth:** `python-garminconnect`-based one-shot script (replaces deprecated garth flow). MFA prompt in real terminal.
+5. **First-time Garmin auth:** `uv run python tools/garmin_auth_setup.py` (interactive — needs MFA in a real terminal).
 6. **Verify:** `uv run python tools/auth_status.py` → all three `ok: true`.
 
-**Next milestone: M2 — ingest + TSS.** See sequencing below.
+**Next milestone: M2 — ingest + TSS.** Start here in the next Claude Code session. Pre-conditions: Claude Code launched from a direnv-loaded shell (`cd training-mate && claude`) so all three MCP servers spawn with proper env. Sanity check on first turn: confirm Calendar MCP registered tools (it failed to load in the auth bring-up session due to empty env at startup).
 
 ---
 
