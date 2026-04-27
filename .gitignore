@@ -1,6 +1,9 @@
 # secrets
 .env
 
+# direnv local cache (.envrc itself is committed — it just sources .env)
+.direnv/
+
 # local data
 data/
 *.sqlite

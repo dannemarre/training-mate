@@ -16,14 +16,30 @@ Companion files: `CLAUDE.md` (athlete + rules), `docs/*.md` (curated knowledge),
   - Google Calendar wired into `.mcp.json` (`@cocal/google-calendar-mcp`); `tools/auth_status.py` extended to report Calendar token state. `TM_CALENDAR_NAME` env var (Martin's calendar is `Training Mate`).
   - `journal/` scaffolded: `README.md`, `_template-plan.md`, `_template-log.md`.
   - `.claude/commands/plan-week.md`, `.claude/commands/log.md` — first two slash commands.
+- **M1.75 — auth bring-up on Mac (this session).**
+  - Strava: API app created (Client ID `231461`, callback domain `localhost`); manual curl-based OAuth flow → tokens at `~/.config/strava-mcp/config.json`. **Confirmed working via MCP** (`mcp__strava__check-strava-connection` returns "Connected to Strava as Martin Dannelind").
+  - Google Calendar: OAuth dance complete → `tokens.json` at `~/.config/google-calendar-mcp/`. **Calendar MCP fails to register tools without env-propagation fix** — see Risks & gotchas.
+  - Garmin: blocked. SSO 429-throttled by retry-loop from empty-env `garmin-connect-mcp`; `garth` library deprecated 2026-03-28 anyway. Migration to non-garth `python-garminconnect>=0.3.3` pending.
+  - **Bug fix landed (commit `b11809a`):** `tools/_common.py` now reads camelCase keys from `~/.config/strava-mcp/config.json` (matching upstream).
+  - **Architecture audit done.** MCP servers are second-class (ad-hoc only), CLI tools are primary. Direnv adopted for env propagation. See Resolved decisions.
 
-**Pending user setup (must be done on Martin's Mac before M5):**
-1. Move `~/Downloads/client_secret_*.json` → `~/.config/google-calendar-mcp/gcp-oauth.keys.json`, `chmod 600`.
-2. `cp .env.example .env`; set `GOOGLE_OAUTH_CREDENTIALS=/Users/martin/.config/google-calendar-mcp/gcp-oauth.keys.json` and `TM_CALENDAR_NAME="Training Mate"`.
-3. First run `npx -y @cocal/google-calendar-mcp` → browser OAuth dance.
-4. Verify with `uv run python tools/auth_status.py` → `google_calendar.ok = true`.
-5. Strava OAuth: `npx -y @r-huijts/strava-mcp-server` (after creating Strava API app at strava.com/settings/api).
-6. Garmin SSO: `npx -y @nicolasvegam/garmin-connect-mcp` (will prompt for MFA on first run).
+**Pending user setup (do these on Martin's Mac, in order):**
+1. **direnv** (one-time, replaces ad-hoc shell sourcing):
+   ```
+   brew install direnv
+   echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
+   source ~/.zshrc
+   cd /Users/martin/Documents/github/training-mate
+   direnv allow
+   ```
+   Repo's `.envrc` (committed) just contains `dotenv`, so `cd` into the repo loads `.env` automatically.
+2. **OAuth credentials** (already done this session — keep for fresh-clone reference):
+   - `mv ~/Downloads/client_secret_*.json ~/.config/google-calendar-mcp/gcp-oauth.keys.json && chmod 600 …`
+   - `cp .env.example .env`; fill in Strava + Garmin + Google credentials. `chmod 600 .env`.
+3. **First-time Strava OAuth:** open `https://www.strava.com/oauth/authorize?client_id=$STRAVA_CLIENT_ID&response_type=code&redirect_uri=http%3A%2F%2Flocalhost&approval_prompt=force&scope=profile%3Aread_all%2Cactivity%3Aread_all%2Cactivity%3Aread%2Cprofile%3Awrite` in browser, copy `code` from redirect URL, exchange via curl + persist to `~/.config/strava-mcp/config.json` (camelCase keys).
+4. **First-time Google Calendar OAuth:** `npx -y @cocal/google-calendar-mcp auth`, complete browser dance.
+5. **First-time Garmin auth:** `python-garminconnect`-based one-shot script (replaces deprecated garth flow). MFA prompt in real terminal.
+6. **Verify:** `uv run python tools/auth_status.py` → all three `ok: true`.
 
 **Next milestone: M2 — ingest + TSS.** See sequencing below.
 
@@ -42,12 +58,13 @@ A personal AI trainer that plans, schedules, and tracks workouts (mostly cycling
 - a `journal/` directory of weekly `.md` files Claude writes and updates — the rolling training diary, version-controlled,
 - and a project `CLAUDE.md` pinning athlete profile + rules + an index of everything above.
 
-**Three upstream MCP servers** stay loaded for ad-hoc API access:
-- Strava: `@r-huijts/strava-mcp-server` (OAuth, read-only API).
-- Garmin: `@nicolasvegam/garmin-connect-mcp` (mobile SSO, read-only). Garmin's official Connect Developer Program is business-only and rejects personal apps; this server is the standard community workaround.
+**Two upstream MCP servers in `.mcp.json` autostart**, for ad-hoc API access only (not the primary surface):
+- Strava: `@r-huijts/strava-mcp-server` (OAuth, read-only API). Resilient to empty env — falls back to `~/.config/strava-mcp/config.json`.
 - Google Calendar: `@cocal/google-calendar-mcp` (Google Cloud OAuth, read + write events).
 
-Local Python tools read the same on-disk token caches the upstream MCP servers wrote (`~/.config/strava-mcp/config.json`, `~/.garmin-mcp/`, `~/.config/google-calendar-mcp/`) via `stravalib` / `garminconnect`. Direct lib calls (not MCP-to-MCP) because activity streams are big numeric arrays and routing them through MCP JSON would be wasteful.
+**Garmin MCP demoted** (`@nicolasvegam/garmin-connect-mcp`): kept installed for occasional ad-hoc questions but **not autostarted**, because (a) `garth` is deprecated, (b) it retry-loops with empty env and triggers Garmin's SSO 429 throttle. Primary Garmin access lives in `tools/*.py` via `python-garminconnect>=0.3.3` (post-garth, native SSO).
+
+Local Python tools read the same on-disk token caches the MCP servers / direct libraries write (`~/.config/strava-mcp/config.json`, `~/.garmin-mcp/`, `~/.config/google-calendar-mcp/`) via `stravalib`, `python-garminconnect`, and `google-api-python-client` respectively. Direct lib calls (not MCP-to-MCP) because activity streams are big numeric arrays and routing them through MCP JSON would be wasteful.
 
 ## Architecture
 
@@ -147,16 +164,19 @@ sodium_mg_per_h    = 500..700 base, +300 if temp_c>25
 
 ## Risks & gotchas
 
+- **MCP env propagation is non-magical.** Claude Code interpolates `${VAR}` in `.mcp.json` against its **launching shell's process env** at session start. `.env` is *not* auto-sourced. Without direnv (or manual `set -a; source .env; set +a; claude`), MCP servers spawn with empty env: Strava falls back to disk config (resilient), Calendar fails-fast (no tools registered), Garmin retry-loops password login and 429-throttles the user's IP. Direnv is the canonical fix — see Pending user setup. (Recorded in `~/.claude/projects/.../memory/feedback_mcp_env_propagation.md`.)
 - **Strava 200/15min, 2000/day** — stream pulls dominate; persist `X-RateLimit-Usage` to `rate_limit_log`, throttle nightly sync, never re-pull a stream. Use `activity:read_all` scope for private rides.
 - **Garmin ToS gray area** — keep ≤1 req/s; never automate workout push without explicit confirmation; `TM_GARMIN_DRYRUN=true` enforced in `tools/_common.py`.
-- **Garmin token refresh** — handle `GarthHTTPError` 401 by re-running `garth.login`; surface MFA as a structured stderr error.
+- **`garth` is deprecated as of 2026-03-28** ([discussion #222](https://github.com/matin/garth/discussions/222)). The legacy garth-based login flow is broken for new logins. **Pin `python-garminconnect>=0.3.3`** — that release reimplements Garmin's mobile SSO directly using `curl_cffi` (Cloudflare TLS-fingerprint bypass) and no longer depends on garth. Existing OAuth1 tokens still work until expiry.
+- **Garmin SSO 429 throttle** — triggered by repeated failed login attempts (e.g. retry-looping MCP server with empty creds). Clears in ~15-30 min, but compound failures extend it. Always kill all `garmin-connect-mcp` processes before retrying. Single-attempt logins with jittered backoff in `tools/garmin_*.py`.
+- **Garmin token refresh (post-garth)** — `python-garminconnect` v0.3.3+ writes the same `~/.garmin-mcp/{oauth1_token,oauth2_token}.json` cache the upstream MCP reads. On 401, re-run the SSO flow with MFA prompt; surface as a structured stderr error.
 - **NP for short rides** — flag `np_low_confidence=true` for activities <20 min.
 - **Time zones** — store UTC; convert to local only for display and PMC daily roll-up.
 - **Polyline precision** — Strava is precision 5 (`polyline.decode(s, 5)`).
-- **Google OAuth in Testing mode** — refresh tokens expire after 7 days; re-run `npx -y @cocal/google-calendar-mcp` weekly. Acceptable for v1.
+- **Google OAuth in Testing mode** — refresh tokens expire after 7 days; re-run `npx -y @cocal/google-calendar-mcp auth` weekly. Verifying the OAuth client (privacy policy + demo video + ~3 days review) is high-cost-low-value for single-user; tolerate the weekly dance. Add a `tools/auth_status.py` warning at >5 days.
 - **Calendar is a dedicated `Training Mate` calendar** — never write to other calendars.
 - **Single-device assumption** — token caches live on Martin's laptop only. Phone/web sandbox sessions need a session-start hook + secret store; out of scope for now.
-- **Don't commit secrets** — `.mcp.json` only references `${VAR}`; real values in `.env` (gitignored). `data/` gitignored.
+- **Don't commit secrets** — `.mcp.json` only references `${VAR}`; real values in `.env` (gitignored). `data/` gitignored. `.envrc` is committed because it just contains the `dotenv` directive.
 - **Tool sprawl** — every new tool MUST be added to `docs/tools.md` with arg list and example JSON, or Claude won't know it exists.
 
 ## Out of scope for v1
@@ -174,6 +194,14 @@ sodium_mg_per_h    = 500..700 base, +300 if temp_c>25
 - Calendar event style: **one event per planned session** (not weekly summary).
 - Calendar destination: **dedicated `Training Mate` calendar**.
 - Knee rehab seed content: **generic patellofemoral template** (provisional, replace with physio protocol later).
-- Strava package: `@r-huijts/strava-mcp-server` (token cache `~/.config/strava-mcp/config.json`).
-- Garmin package: `@nicolasvegam/garmin-connect-mcp` (token cache `~/.garmin-mcp/`).
-- Google Calendar package: `@cocal/google-calendar-mcp` (token cache `~/.config/google-calendar-mcp/`).
+- **Env loading: direnv with `.envrc` (committed, contains `dotenv`).** `.env` itself stays gitignored. Documented in Pending user setup.
+- **MCP server roles** (post-2026-04-27 audit):
+  - **Strava** (`@r-huijts/strava-mcp-server`): kept in `.mcp.json` autostart. Resilient — falls back to disk config if env empty. Used for ad-hoc queries (`/kom`, weekly review). Token cache `~/.config/strava-mcp/config.json` (camelCase keys: `clientId`, `accessToken`, `refreshToken`, `expiresAt`).
+  - **Google Calendar** (`@cocal/google-calendar-mcp`): kept in `.mcp.json` autostart. Best-of-class community option (1.1k★). Token cache `~/.config/google-calendar-mcp/{tokens.json,gcp-oauth.keys.json}`.
+  - **Garmin** (`@nicolasvegam/garmin-connect-mcp`): **demoted** — kept installed but not as primary surface. Use it for ad-hoc Garmin questions only. Primary access via `python-garminconnect>=0.3.3` directly (post-garth-removal). Shared token cache `~/.garmin-mcp/{oauth1_token,oauth2_token,profile}.json`.
+- **Python library choices** for direct API access (CLI tools under `tools/`):
+  - Strava: `stravalib` (mature, OAuth refresh built-in) reading the same `~/.config/strava-mcp/config.json` the MCP writes.
+  - Garmin: `python-garminconnect>=0.3.3` (no garth dependency, native SSO via curl_cffi).
+  - Calendar: `google-api-python-client` reading `~/.config/google-calendar-mcp/tokens.json`.
+  - Weather: `httpx` directly to Open-Meteo (no MCP — too thin to wrap, free + keyless). Per `docs/wind-and-kom.md` for KOM yaw math.
+- **No standalone weather MCP server.** Existing community options are tiny and abandoned; Open-Meteo's API is simple enough to wrap as `tools/route_weather.py`.

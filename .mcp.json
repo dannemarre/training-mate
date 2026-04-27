@@ -1,4 +1,5 @@
 {
+  "_comment": "Garmin MCP intentionally NOT autostarted — see PLAN.md Resolved decisions. Empty-env retry-loops can 429-throttle the user's IP, and garth (its underlying Python lib) is deprecated. Run manually via `npx -y @nicolasvegam/garmin-connect-mcp` for ad-hoc Garmin questions; primary access via tools/*.py + python-garminconnect>=0.3.3.",
   "mcpServers": {
     "strava": {
       "command": "npx",
@@ -6,14 +7,6 @@
       "env": {
         "STRAVA_CLIENT_ID": "${STRAVA_CLIENT_ID}",
         "STRAVA_CLIENT_SECRET": "${STRAVA_CLIENT_SECRET}"
-      }
-    },
-    "garmin": {
-      "command": "npx",
-      "args": ["-y", "@nicolasvegam/garmin-connect-mcp"],
-      "env": {
-        "GARMIN_EMAIL": "${GARMIN_EMAIL}",
-        "GARMIN_PASSWORD": "${GARMIN_PASSWORD}"
       }
     },
     "google-calendar": {
