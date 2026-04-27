@@ -15,6 +15,14 @@
         "GARMIN_EMAIL": "${GARMIN_EMAIL}",
         "GARMIN_PASSWORD": "${GARMIN_PASSWORD}"
       }
+    },
+    "google-calendar": {
+      "command": "npx",
+      "args": ["-y", "@cocal/google-calendar-mcp"],
+      "env": {
+        "GOOGLE_OAUTH_CREDENTIALS": "${GOOGLE_OAUTH_CREDENTIALS}",
+        "GOOGLE_CALENDAR_MCP_TOKEN_PATH": "${GOOGLE_CALENDAR_MCP_TOKEN_PATH}"
+      }
     }
   }
 }

@@ -25,8 +25,25 @@ DB_PATH = DATA_DIR / "training-mate.sqlite"
 
 STRAVA_TOKEN_PATH = Path.home() / ".config" / "strava-mcp" / "config.json"
 GARMIN_TOKEN_DIR = Path.home() / ".garmin-mcp"
+GOOGLE_CALENDAR_TOKEN_DIR_DEFAULT = Path.home() / ".config" / "google-calendar-mcp"
 
 SCHEMA_VERSION = 1
+
+
+def google_calendar_token_dir() -> Path:
+    """Where @cocal/google-calendar-mcp stores OAuth tokens.
+
+    Defaults to ~/.config/google-calendar-mcp/, overridable via
+    GOOGLE_CALENDAR_MCP_TOKEN_PATH.
+    """
+    _load_env()
+    override = os.getenv("GOOGLE_CALENDAR_MCP_TOKEN_PATH")
+    return Path(override).expanduser() if override else GOOGLE_CALENDAR_TOKEN_DIR_DEFAULT
+
+
+def calendar_name() -> str:
+    _load_env()
+    return os.getenv("TM_CALENDAR_NAME", "Training")
 
 
 def _load_env() -> None:
@@ -334,13 +351,16 @@ __all__ = [
     "DATA_DIR",
     "DB_PATH",
     "GARMIN_TOKEN_DIR",
+    "GOOGLE_CALENDAR_TOKEN_DIR_DEFAULT",
     "STRAVA_TOKEN_PATH",
     "StravaTokens",
+    "calendar_name",
     "emit",
     "fail",
     "garmin_client",
     "garmin_dryrun",
     "garmin_token_paths",
+    "google_calendar_token_dir",
     "load_strava_tokens",
     "log",
     "open_db",

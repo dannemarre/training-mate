@@ -20,7 +20,7 @@ When you (Claude) want a number, run the relevant tool. Don't try to guess from 
 
 ## `auth_status.py`
 
-Report token + DB health. No args.
+Report token + DB health for all three integrations. No args.
 
 **Example output:**
 ```json
@@ -31,14 +31,27 @@ Report token + DB health. No args.
   "garmin": {"ok": true, "oauth1_present": true, "oauth2_present": true,
              "profile": {"displayName": "athlete", "profileId": 12345},
              "token_dir": "/root/.garmin-mcp"},
+  "google_calendar": {"ok": true, "credentials_path": "/path/to/gcp-oauth.keys.json",
+                      "credentials_present": true,
+                      "token_dir": "/root/.config/google-calendar-mcp",
+                      "token_files": ["tokens.json"],
+                      "calendar_name": "Training"},
   "db":     {"path": "/home/user/training-mate/data/training-mate.sqlite",
              "existed_before": true, "schema_version": 1}
 }
 ```
 
-Use this whenever a sync tool errors with auth-related messages.
+Use this whenever a sync or calendar tool errors with auth-related messages. `google_calendar.ok = false` while `credentials_present = true` means the upstream MCP server needs to be invoked once interactively to complete the OAuth browser flow.
 
 ---
+
+## Google Calendar — for now, use the upstream MCP server directly
+
+Until `tools/calendar_*.py` land in M5, calendar reads/writes go through the `google-calendar` MCP server (`@cocal/google-calendar-mcp`). Its tools (`list-events`, `create-event`, `update-event`, `delete-event`) are available in any Claude Code session that has `.mcp.json` loaded. Always:
+
+- Restrict to the `Training` calendar (configured via `TM_CALENDAR_NAME` in `.env`).
+- Show a diff before writing — list each create / update / delete, wait for explicit approval.
+- Update the corresponding `journal/YYYY-WW-plan.md`'s "Calendar" section after a successful push.
 
 ## (planned, M2+)
 
@@ -58,5 +71,7 @@ Use this whenever a sync tool errors with auth-related messages.
 - `fuel_plan.py --duration_h --IF --temp_c` — carbs/fluids/sodium plan.
 - `daily_briefing.py` — aggregate form + plan + weather + fueling.
 - `weekly_review.py` — last 7 days vs plan.
+- `calendar_list.py --from --to` — events in window from the Training calendar.
+- `calendar_upsert_week.py --plan journal/YYYY-WW-plan.md [--apply]` — diff (default) or apply, against the Training calendar.
 
 Each will be added here with its full arg list and example JSON when implemented.
