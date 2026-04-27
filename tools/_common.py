@@ -291,12 +291,14 @@ def load_strava_tokens() -> StravaTokens:
     def pick(env_key: str, cfg_key: str) -> str | None:
         return os.getenv(env_key) or cfg.get(cfg_key)
 
+    # Upstream @r-huijts/strava-mcp-server writes camelCase keys (clientId, accessToken, …)
+    # to ~/.config/strava-mcp/config.json. Env vars stay UPPER_SNAKE.
     return StravaTokens(
-        client_id=pick("STRAVA_CLIENT_ID", "client_id"),
-        client_secret=pick("STRAVA_CLIENT_SECRET", "client_secret"),
-        access_token=pick("STRAVA_ACCESS_TOKEN", "access_token"),
-        refresh_token=pick("STRAVA_REFRESH_TOKEN", "refresh_token"),
-        expires_at=cfg.get("expires_at"),
+        client_id=pick("STRAVA_CLIENT_ID", "clientId"),
+        client_secret=pick("STRAVA_CLIENT_SECRET", "clientSecret"),
+        access_token=pick("STRAVA_ACCESS_TOKEN", "accessToken"),
+        refresh_token=pick("STRAVA_REFRESH_TOKEN", "refreshToken"),
+        expires_at=cfg.get("expiresAt"),
     )
 
 
