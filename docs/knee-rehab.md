@@ -10,8 +10,13 @@
 4. **Slow eccentrics, controlled tempo.** No fast/jerky reps.
 5. **Frequency:** 2-3× per week minimum during build/base. 1-2× during peak/race weeks. Daily mobility is fine.
 6. **Don't combine** a hard cycling intensity day with a heavy-load lower-body strength day. Strength → before easy ride or on rest day.
-7. **Cycling caveats:** big out-of-the-saddle efforts on steep climbs early in a ride are a known aggravator — warn Martin if the day's plan starts with hills.
-8. **Running caveats:** long downhill running is high risk. If running is in the plan, prefer flat-to-rolling.
+7. **Hip + knee together.** Per Barton et al. 2024: hip-targeted + knee-targeted exercise outperforms either alone. Every session pairs them.
+8. **Cycling caveats — known aggravators:**
+   - Big out-of-saddle efforts on steep climbs **early in a ride** (cold start)
+   - **Low cadence (<70 rpm) under load** on climbs — high patellofemoral compression. Default to spinning gears on hilly rides.
+   - **Cold-start hard efforts** — first 10 min of every ride must be Z1/Z2 minimum. Especially relevant for Onsdagsgrus if the group goes hot from the start.
+   - **Single-leg eccentric loading on cleats** (e.g. one-leg drills under load) — skip until pain-free baseline established.
+9. **Running caveats:** long downhill running is high risk. Prefer flat-to-rolling when running is in the plan.
 
 ## The exercise pool
 
@@ -81,6 +86,32 @@ Load progressed: yes / no
 ```
 
 Append to `journal/YYYY-WW-log.md` under the `### Knee` heading. Trends across weeks are inputs to weekly planning — if the knee got worse two weeks running, scale rehab back and ask Martin to see the physio.
+
+## Bike fit — the silent aggravator
+
+Per the 2025 cycling-PFP literature, before adjusting training, rule out bike-fit causes:
+
+| Fit factor | What goes wrong | Target |
+|---|---|---|
+| Saddle too low | Knee flexion >35° at bottom of stroke → patellofemoral compression | Knee 25-35° at bottom of stroke (full extension test) |
+| Saddle too far forward | Knee anterior to pedal axle | Plumb line from kneecap drops at or just behind pedal axle (KOPS-ish) |
+| Cleat too far forward | Toe-down pedaling stress | Ball of foot over pedal axle |
+| Cleat float restricted | Knee can't track natural arc | ≥4.5° float each side (Look Keo Grip, Speedplay flexible) |
+| Excessively rotated cleats | Forces unnatural tracking | Neutral default; rotate only if natural foot angle demands it |
+| Crank length too long | Excessive knee flexion at top of stroke | 165–172.5 mm typical; shorter for shorter inseams |
+
+**Decision rule for the agent:** if knee pain recurs across multiple sessions despite consistent rehab progression, **before adjusting training**, recommend a professional bike fit. Note in journal `### Knee` section.
+
+## Recovery timeline expectations
+
+Per JOSPT 2025 systematic review on PFP prognosis:
+- Meaningful improvement typically takes **6–12 weeks** of consistent rehab.
+- ~40% of patients still symptomatic at 1 year **without** comprehensive (multi-component) intervention.
+- Hip + knee + education + load management → much better outcomes than any single intervention.
+
+**Project rule:** if Martin shows no improvement after 8 weeks of consistent rehab + appropriate training load → flag in `journal/YYYY-WW-log.md` and recommend physio visit. Don't push further on the same protocol.
+
+Sources: [Barton et al. 2024 PFP best practice](https://pubmed.ncbi.nlm.nih.gov/39401870/), [JOSPT 2025 prognosis](https://www.jospt.org/doi/10.2519/jospt.2025.13491), [Endurance Rehabilitation cycling commentary](https://www.endurancerehab.com/blog/patellofemoral-pain-incycling/).
 
 ## What to ask the physio (next visit)
 
