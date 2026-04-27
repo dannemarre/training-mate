@@ -12,206 +12,201 @@ All tools follow the same contract:
 - **stderr**: human-readable logs.
 - exit 0 on success; non-zero with `{"error": "..."}` on stdout for failures.
 - DB access via `tools/_common.py:open_db()`.
-- Strava auth via `_common.strava_client()`; Garmin via `_common.garmin_client()` — both read the upstream MCP servers' on-disk caches.
-- Pure-function math (TSS, NP, PMC, fueling, wind/yaw) lives in `analysis/`.
+- Strava auth via `_common.strava_client()`; Garmin via `_common.garmin_client()`.
+- Pure-function math (TSS, NP, PMC, fueling, wind/yaw, workouts) lives in `analysis/`.
 
 When you (Claude) want a number, run the relevant tool. Don't try to guess from prior context.
 
 ---
 
-## `auth_status.py`
+## Auth & data ingest
 
-Report token + DB health for Strava + Garmin + Calendar. No args.
+### `auth_status.py`
+Token + DB health for Strava + Garmin + Calendar. No args.
 
-**Output (truncated):**
-```json
-{
-  "strava": {"ok": true, "client_id": true, "access_token": true, "expires_at": ..., "expires_in_s": ..., "config_path": "..."},
-  "garmin": {"ok": true, "format": "modern", "modern_present": true, "oauth1_present": false, "oauth2_present": false, "profile": null, "token_dir": "..."},
-  "google_calendar": {"ok": true, "credentials_present": true, "token_files": ["gcp-oauth.keys.json", "tokens.json"], "calendar_name": "Training Mate"},
-  "db": {"path": "...", "schema_version": 1}
-}
-```
+### `garmin_auth_setup.py`
+Interactive Garmin SSO + MFA. Re-run on token expiry (~1 year).
 
----
-
-## `garmin_auth_setup.py`
-
-Interactive Garmin SSO + MFA. Reads `GARMIN_EMAIL` / `GARMIN_PASSWORD` from `.env`, prompts for MFA on stderr, saves tokens to `~/.garmin-mcp/garmin_tokens.json`. Re-run on token expiry (~1 year) or password change.
-
-```
-uv run python tools/garmin_auth_setup.py
-```
-
-**Output:** `{"ok": true, "token_dir": "...", "user": "...", "profile_id": ..., "format": "modern"}`
-
----
-
-## `sync_activities.py`
-
-Pull Strava activities + (optionally) Garmin wellness into SQLite. Strava is the primary activity source; Garmin is the wellness source.
-
+### `sync_activities.py`
+Pull Strava activities + (optionally) Garmin wellness into SQLite.
 ```
 --since YYYY-MM-DD       default: 30 days ago
 --limit N                cap on activities pulled
 --include-streams        also pull power/HR streams; recompute TSS
---include-wellness       pull HRV/sleep/RHR/body battery/readiness from Garmin
---no-strava              skip Strava sync
---no-garmin              skip Garmin (incl. wellness) sync
+--include-wellness       pull HRV/sleep/RHR/body battery/readiness
+--no-strava / --no-garmin
 ```
 
-**Output:**
-```json
-{
-  "synced": {"strava": 9, "garmin_wellness": 7},
-  "skipped": {"strava": 0},
-  "errors": [],
-  "as_of_utc": "...",
-  "profile_placeholders": ["ftp_w", ...]
-}
+### `list_activities.py`
+Cache-only query.
+```
+--since {Nd | YYYY-MM-DD}     default 30 days ago
+--sport {cycling|running|all} default all
+--min-tss N
+--limit N                     newest first
 ```
 
-The `profile_placeholders` field warns if FTP / LTHR / HR-anchors are still using defaults — fix via `tools/estimate_ftp.py --commit` or by editing `athlete_profile`.
-
----
-
-## `list_activities.py`
-
-Query the cached activities table. No API calls.
-
+### `get_activity.py`
+Full detail for one activity.
 ```
---since {Nd | YYYY-MM-DD}   default: 30 days ago
---sport {cycling|running|all}  default: all
---min-tss N                 filter
---limit N                   cap, newest first
+--id N                  required (DB row id)
+--include-streams       attach decoded stream summaries
+--include-stream-data   attach full numpy arrays as JSON (heavy)
 ```
 
-**Output:** `{"count": N, "since": "...", "activities": [{...}]}` — each activity has the human-relevant subset (id, sport, start_utc, duration_s/min, distance_m/km, avg_power, np, intensity_factor, tss, tss_kind, kj, avg_hr, max_hr, elevation_gain_m, np_low_confidence).
-
----
-
-## `get_activity.py`
-
-Full detail for one activity. `--id` is the DB row id (use `list_activities.py` to find it).
-
-```
---id N                   required
---include-streams        attach decoded stream summaries (length, mean, max, min)
---include-stream-data    attach the full numpy arrays as JSON (heavy)
-```
-
-**Output:** `{"activity": {...}, "streams": {"power": {...}, "hr": {...}}}`
-
----
-
-## `estimate_ftp.py`
-
+### `estimate_ftp.py`
 Propose an FTP from recent hard efforts.
-
 ```
---method {recent_np|best_20min}   default: recent_np
---window-days N                   default: 90
---commit                          persist to ftp_history (otherwise dry-run)
---note "..."                      annotation for the ftp_history row
+--method {recent_np|best_20min}   default recent_np
+--window-days N                   default 90
+--commit                          persist to ftp_history
+--note "..."
 ```
-
-**Output:**
-```json
-{
-  "method": "recent_np",
-  "current_ftp": 240,
-  "proposed_ftp": 268,
-  "evidence": [{"activity_id": ..., "duration_min": 22.5, "np": 282.0, "tss": 79}],
-  "rationale": "0.95 × highest qualifying NP in window",
-  "committed": false,
-  "effective_date": null,
-  "window_days": 90
-}
-```
-
-`recent_np` = take highest 20+ min effort by NP, multiply by 0.95.
-`best_20min` = same, but only proposes a change if NP exceeds 105% of current FTP.
 
 ---
 
-## Google Calendar — for now, use the upstream MCP server directly
+## Form & wellness
 
-Until `tools/calendar_*.py` land in M5, calendar reads/writes go through the `google-calendar` MCP server (`@cocal/google-calendar-mcp`) autostarted via `.mcp.json`. Always:
-
-- Restrict to the `Training Mate` calendar (configured via `TM_CALENDAR_NAME` in `.env`).
-- Show a diff before writing — list each create / update / delete, wait for explicit approval.
-- Update the corresponding `journal/YYYY-WW-plan.md`'s "Calendar" section after a successful push.
-
----
-
-## Garmin MCP — manual ad-hoc only
-
-The Garmin MCP server (`@nicolasvegam/garmin-connect-mcp`) is **not autostarted** (see `BUILDOUT.md` — empty-env retry-loops trigger SSO 429s, and garth is deprecated). Either:
-
-- Use a `tools/*.py` query (post-M2 these exist: `list_activities.py`, `get_activity.py`, `daily_briefing.py`).
-- Or invoke `npx -y @nicolasvegam/garmin-connect-mcp` manually for one-off natural-language Garmin queries.
-
----
-
-## `compute_pmc.py`
-
+### `compute_pmc.py`
 Recompute `pmc_daily` from activities.
-
 ```
---backfill            full rebuild from earliest activity (or 365d ago)
---recompute-days N    default 14 (always at least 14, to cover edits)
---through YYYY-MM-DD  end date; default today (Europe/Stockholm)
+--backfill            full rebuild
+--recompute-days N    default 14
+--through YYYY-MM-DD
 ```
 
-**Output:** `{"computed_through": ..., "rows_written": N, "first_date": ..., "ctl": ..., "atl": ..., "tsb": ..., "form_state": "...", "seed_ctl": ..., "seed_atl": ..., "seed_date": ...}`
+### `current_form.py`
+Today's CTL/ATL/TSB/ramp_7d/form_state. No args.
 
-Run `--backfill` once after a fresh sync; thereafter the incremental mode is enough.
+Output includes `ramp_warning` (>+8) and `ramp_critical` (>+10) flags plus `history_14d`.
+
+### `daily_briefing.py`
+Aggregates form, wellness, planned session, group rides, knee status into one JSON the `/today` skill renders.
+```
+--date YYYY-MM-DD   default today (Europe/Stockholm)
+```
 
 ---
 
-## `current_form.py`
+## Planning & workouts
 
-Today's form state. Read-only against `pmc_daily`.
-
-**Output:**
-```json
-{
-  "as_of": "2026-04-27", "ctl": 47.0, "atl": 89.6, "tsb": -56.4,
-  "ramp_7d": 4.25, "form_state": "risky",
-  "ramp_warning": false, "ramp_critical": false,
-  "citation": "docs/training-science.md#tsb-interpretation-thresholds",
-  "history_14d": [{"date": ..., "tss": ..., "ctl": ..., "atl": ..., "tsb": ...}]
-}
+### `generate_workout.py`
+Pure-function workout structure.
+```
+--kind {endurance|recovery|sst|threshold|vo2|race}   required
+--duration-min N                                     for endurance/recovery/race
+--template STR                                       sst:{2x20|3x15|4x10}
+                                                     threshold:{2x20|3x15|4x10|overunders}
+                                                     vo2:{5x4|4x4_norwegian|6x3|30_15}
+--name STR
 ```
 
-`form_state` is one of: `crashing`, `risky`, `overreached`, `productive`, `neutral`, `race-ready`, `detrained`. See `docs/training-science.md#form-state-buckets`.
+### `export_workout.py`
+Write `.zwo` (and optionally `.fit`).
+```
+--kind ... --duration-min N --template STR --name STR
+--out PATH
+--push-to-garmin    gated by TM_GARMIN_DRYRUN; .fit writing pending fit-tool integration
+```
+
+### `plan_week.py`
+Propose a 7-day plan; write `journal/YYYY-WW-plan.md`.
+```
+--week-start YYYY-MM-DD              must be Monday; default next Monday
+--mode {pyramidal|polarized|recovery|auto}   default auto (chooses from form_state)
+--no-write                           print only, don't touch journal
+```
 
 ---
 
-## `daily_briefing.py`
+## Calendar
 
-Aggregate today's signals (form + wellness + plan + group rides + knee). The `/today` skill consumes this.
-
+### `calendar_list.py`
+Read events from the Training Mate Google Calendar.
 ```
---date YYYY-MM-DD   default: today (Europe/Stockholm)
+--from YYYY-MM-DD     default today
+--to   YYYY-MM-DD     default from + 7 days
+--calendar STR        override TM_CALENDAR_NAME
+--json-only
 ```
 
-**Output:** `{date, weekday, form, wellness, today_session, group_rides, knee_alert, knee_recent, advisory: [...]}`. The `advisory` array is the prioritized list of headline signals (ramp warnings, HRV breaches, sleep deficits, knee status) the agent should surface first.
+### `calendar_upsert_week.py` *(planned)*
+Diff a week's plan against existing calendar events; apply with confirmation. Not yet built — for now, use the `google-calendar` MCP server's create/update/delete-event tools after showing the diff.
 
 ---
 
-## Planned (M5+)
-- `generate_workout.py --type sst|vo2|threshold|endurance|recovery --duration <min>` — structured workout JSON.
-- `export_workout.py --in workout.json --format zwo|fit` — emit `.zwo` (always) and optionally `.fit` (with `--push-to-garmin`).
-- `plan_week.py --start YYYY-MM-DD` — 7-day skeleton respecting current form.
-- `sync_segments.py` — pull starred Strava segments + precompute bearings.
-- `route_weather.py --route_id <int>` — Open-Meteo hour-by-hour along a route.
-- `kom_today.py [--lat --lon --radius_km]` — wind-ranked starred segments.
-- `kom_threat.py --segment_id <int>` — can-I-take-it scoring.
-- `fuel_plan.py --duration_h --IF --temp_c` — carbs/fluids/sodium plan.
-- `weekly_review.py` — last 7 days vs plan, lessons.
-- `calendar_list.py --from --to` — events in window.
-- `calendar_upsert_week.py --plan journal/YYYY-WW-plan.md [--apply]` — diff/apply.
-- `rate_limits.py` — 24h API usage by provider.
+## Segments / KOM / weather
 
-Each will be added here with full args + example JSON when implemented.
+### `sync_segments.py`
+Pull Martin's starred Strava segments + precompute bearings.
+```
+--include-efforts
+--limit N
+```
+
+### `route_weather.py`
+Open-Meteo hourly forecast (no auth).
+```
+--lat FLOAT --lon FLOAT          single point
+--polyline STR                   Strava precision-5 polyline
+--hours-ahead N                  default 12
+--sample-count N                 default 5 for polyline
+```
+
+### `kom_today.py`
+Rank starred segments by best KOM-attack score over the next N hours.
+```
+--hours-ahead N         default 6
+--top N                 default 5
+--min-distance-m N      default 200
+```
+
+### `kom_threat.py`
+Single-segment detail with full wind decomposition.
+```
+--segment-id N                 required
+--hour-utc YYYY-MM-DDTHH:00    optional; default now
+--user-power-w INT             optional; for realistic-threat scoring
+```
+
+---
+
+## Fueling
+
+### `fuel_plan.py`
+Carbs / fluids / sodium plan for a ride.
+```
+--duration-h FLOAT       required
+--IF FLOAT               required (intensity factor)
+--temp-c FLOAT
+--weight-kg FLOAT        override athlete_profile.weight_kg
+--heavy-sweater
+```
+
+---
+
+## Review & ops
+
+### `weekly_review.py`
+Diff plan vs actual for an ISO week.
+```
+--week YYYY-WW   default last completed week
+```
+
+Output includes `tss.{planned, actual}`, `form.{start, end, ctl_delta}`, per-day list, `session_distribution`.
+
+### `rate_limits.py`
+24-hour API usage from `rate_limit_log`.
+```
+--window-h N    default 24
+```
+
+---
+
+## Operating notes for the agent
+
+- **Always cite a doc** when giving training advice (CLAUDE.md rule #1). Tools return numbers; docs justify them.
+- **Don't re-pull data** (rule #6). Check the SQLite cache first.
+- **Strava 200/15min, 2000/day** (rule #7). `sync_activities.py` throttles, but watch `rate_limits.py` if doing heavy backfill.
+- **Garmin MCP not autostarted** — for ad-hoc Garmin queries, run `npx -y @nicolasvegam/garmin-connect-mcp` manually, or use a `tools/*.py` query.
+- **Calendar writes show a diff first** (rule #5). Until `calendar_upsert_week.py` lands, use the `google-calendar` MCP server with explicit confirmation.

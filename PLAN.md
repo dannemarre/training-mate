@@ -31,7 +31,17 @@ Companion files: `CLAUDE.md` (athlete + rules), `docs/*.md` (curated knowledge),
 5. **First-time Garmin auth:** `uv run python tools/garmin_auth_setup.py` (interactive — needs MFA in a real terminal).
 6. **Verify:** `uv run python tools/auth_status.py` → all three `ok: true`.
 
-**Next milestone: M2 — ingest + TSS.** Start here in the next Claude Code session. Pre-conditions: Claude Code launched from a direnv-loaded shell (`cd training-mate && claude`) so all three MCP servers spawn with proper env. Sanity check on first turn: confirm Calendar MCP registered tools (it failed to load in the auth bring-up session due to empty env at startup).
+- **M2 — Ingest + TSS. DONE (2026-04-27).** `analysis/tss.py` + `tools/sync_activities.py`/`list_activities.py`/`get_activity.py`/`estimate_ftp.py`. 22 TSS tests pass. Verified end-to-end against Martin's Strava (16 activities synced over 30 days; hrTSS computed correctly).
+- **M3 — PMC + form. DONE.** `analysis/pmc.py` + `tools/compute_pmc.py`/`current_form.py` + `/form` skill. 16 PMC tests pass.
+- **M4 — Wellness + daily surface. DONE.** `analysis/wellness.py` + `tools/daily_briefing.py` (extends `sync_activities.py` with `--include-wellness`). 15 wellness tests pass. Skills `/today`, `/sync`, `/log`.
+- **M5 — Planner + Calendar read + coach subagent. DONE.** `analysis/workouts.py` + `tools/generate_workout.py`/`export_workout.py`/`plan_week.py`/`calendar_list.py`. First subagent `coach` (`.claude/agents/coach.md`). `/plan-week` skill rewritten to delegate to coach. Calendar read verified end-to-end. **`calendar_upsert_week.py` deferred** to a focused next session — risky write surface, deserves a dedicated diff-and-confirm pass.
+- **M6 — KOM + wind. DONE.** `analysis/wind.py` + `tools/sync_segments.py`/`route_weather.py`/`kom_today.py`/`kom_threat.py`. Subagent `kom-hunter` + `/kom` skill. Open-Meteo verified end-to-end.
+- **M7 — Fueling. DONE.** `analysis/fueling.py` + `tools/fuel_plan.py`. Subagent `fueling-advisor` + `/brief` skill.
+- **M8 — Weekly review + polish. DONE.** `tools/weekly_review.py` + `tools/rate_limits.py`. Subagents `weekly-reviewer` (writes to `.claude/agent-memory/coach/MEMORY.md`) and `knee-rehab`. `/review` skill. Final docs/tools.md + CLAUDE.md doc index sweeps.
+
+**Next session: real-world test run** of the coach agent. Suggested flow: `/sync` (pull latest activities + wellness) → `/today` (daily briefing) → `/plan-week` (let `coach` propose next week, review, optionally apply Calendar diff via the MCP server) → `/log` after each session through the week → `/review` Sunday evening. Tighten PLAN.md and CLAUDE.md based on what's confusing or wrong.
+
+The deferred `calendar_upsert_week.py` is the obvious M9 candidate — needs a careful event-diff-and-confirm flow with idempotent IDs.
 
 ---
 

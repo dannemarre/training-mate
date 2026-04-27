@@ -74,14 +74,18 @@ Times always Europe/Stockholm in display; UTC in the DB.
 
 ### Tools (run via `uv run python tools/<name>.py [args]`)
 - `auth_status.py` — Strava + Garmin + Google Calendar token health.
-- `sync_activities.py` — pull Strava + Garmin into SQLite.
+- `garmin_auth_setup.py` — interactive Garmin SSO + MFA (post-garth).
+- `sync_activities.py` — pull Strava activities + Garmin wellness into SQLite.
 - `list_activities.py` / `get_activity.py` — query the cache.
 - `compute_pmc.py` / `current_form.py` / `estimate_ftp.py` — training load.
+- `daily_briefing.py` — aggregate form + wellness + plan + knee + group rides for today.
 - `generate_workout.py` / `export_workout.py` / `plan_week.py` — planning.
 - `sync_segments.py` / `kom_today.py` / `kom_threat.py` — segments + wind.
-- `route_weather.py` / `fuel_plan.py` — race/ride support.
-- `calendar_list.py` / `calendar_upsert_week.py` — Google Calendar read/write.
-- `daily_briefing.py` / `weekly_review.py` — aggregates.
+- `route_weather.py` — Open-Meteo hourly (no auth).
+- `fuel_plan.py` — carbs/fluids/sodium plan.
+- `calendar_list.py` — Google Calendar read.
+- `weekly_review.py` — plan vs actual diff.
+- `rate_limits.py` — 24-hour API usage from `rate_limit_log`.
 
 (See `docs/tools.md` for full args + example output.)
 
@@ -89,21 +93,22 @@ Times always Europe/Stockholm in display; UTC in the DB.
 - `journal/YYYY-WW-plan.md` — proposed weekly schedule, written before the week.
 - `journal/YYYY-WW-log.md` — daily log + weekly retrospective, updated through the week.
 
-### Subagents (delegate via the Agent tool)
-- `coach` — multi-day planning, plan adjustments.
-- `kom-hunter` — picks today's segments given wind + form.
-- `weekly-reviewer` — honest retrospective of the past week.
-- `fueling-advisor` — per-ride and race-day fueling.
-- `knee-rehab` — picks today's rehab work, tracks symptoms.
+### Subagents (`.claude/agents/*.md`; delegate via the Agent tool when reasoning is needed)
+- `coach` — multi-day planning + mid-week adjustments. Has agent memory at `.claude/agent-memory/coach/MEMORY.md` for "what works for Martin" lessons over time.
+- `kom-hunter` — wind-ranked segment picking with form + knee gates.
+- `fueling-advisor` — per-ride and race-day fueling, hot/cold-day adjustments.
+- `weekly-reviewer` — honest retrospective; persists lessons into the coach's memory.
+- `knee-rehab` — today's rehab session selection + symptom trend check (8-week → physio rule).
 
-### Slash commands
-- `/sync` — pull latest from Strava + Garmin.
-- `/today` — next session + readiness check.
-- `/brief` — full daily briefing.
-- `/plan-week` — propose next 7 days; writes `journal/YYYY-WW-plan.md`; offers to upsert into Google Calendar.
+### Slash commands (`.claude/commands/*.md`)
+- `/sync` — pull latest activities + wellness, refresh PMC.
+- `/today` — daily coaching briefing (form + wellness + today's session + knee + group rides).
+- `/brief` — heavier daily briefing with tomorrow's preview (weather + fueling).
+- `/form` — quick CTL/ATL/TSB read-out.
+- `/plan-week` — propose next 7 days via `coach` subagent; write journal; offer Calendar diff.
 - `/log` — append today's note to `journal/YYYY-WW-log.md`.
-- `/kom` — today's wind-ranked segments.
-- `/review` — weekly review; finalises `journal/YYYY-WW-log.md`.
+- `/kom` — wind-ranked KOM-attack segments via `kom-hunter` subagent.
+- `/review` — weekly retrospective via `weekly-reviewer` subagent.
 
 ## Data location
 
