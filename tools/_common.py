@@ -23,6 +23,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
 DB_PATH = DATA_DIR / "training-mate.sqlite"
 
+# Make sibling packages (e.g. `analysis`) importable from any tool that
+# imports _common. Tools are run as `uv run python tools/<name>.py`, which
+# puts `tools/` on sys.path but not the repo root. Adding REPO_ROOT here
+# means `from analysis.tss import ...` Just Works in every tool.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 STRAVA_TOKEN_PATH = Path.home() / ".config" / "strava-mcp" / "config.json"
 GARMIN_TOKEN_DIR = Path.home() / ".garmin-mcp"
 GOOGLE_CALENDAR_TOKEN_DIR_DEFAULT = Path.home() / ".config" / "google-calendar-mcp"
@@ -65,6 +72,96 @@ def fail(message: str, code: int = 1, **extra: Any) -> None:
     payload.update(extra)
     emit(payload)
     sys.exit(code)
+
+
+# ---------------------------------------------------------------------------
+# Stream compression — used by activity_streams.blob
+# ---------------------------------------------------------------------------
+
+
+def encode_stream(arr: Any) -> bytes:
+    """Compress a 1-D numpy array to bytes for `activity_streams.blob`.
+
+    Uses numpy.savez_compressed (gzip-based). No external compression
+    dependency required. Schema docs say "zstd-compressed" — that's
+    aspirational; the blob format is opaque to readers and can be migrated
+    later if size becomes an issue.
+    """
+    import io
+
+    import numpy as np
+
+    buf = io.BytesIO()
+    np.savez_compressed(buf, data=np.asarray(arr))
+    return buf.getvalue()
+
+
+def decode_stream(blob: bytes) -> Any:
+    """Inverse of `encode_stream`. Returns a numpy ndarray."""
+    import io
+
+    import numpy as np
+
+    buf = io.BytesIO(blob)
+    return np.load(buf)["data"]
+
+
+# ---------------------------------------------------------------------------
+# Athlete profile helpers — used by everything that needs FTP / LTHR / RHR.
+# ---------------------------------------------------------------------------
+
+
+def athlete_profile() -> dict[str, Any]:
+    """Read row id=1 from athlete_profile, with sensible defaults if NULL.
+
+    Returns a dict with FTP / LTHR / max_hr / RHR / weight / etc. Defaults
+    are placeholder; tools should surface "using placeholder, please confirm"
+    when the underlying field is None.
+    """
+    DEFAULTS = {
+        "ftp_w": 240,
+        "lthr": 165,
+        "max_hr": 190,
+        "rhr": 50,
+        "weight_kg": 75.0,
+        "run_threshold_pace_s_per_km": 270.0,  # 4:30/km
+        "timezone": "Europe/Stockholm",
+    }
+    with open_db() as conn:
+        row = conn.execute(
+            "SELECT ftp_w, lthr, max_hr, rhr, weight_kg, "
+            "run_threshold_pace_s_per_km, timezone "
+            "FROM athlete_profile WHERE id = 1"
+        ).fetchone()
+    if row is None:
+        return {**DEFAULTS, "from_db": False}
+    out = dict(row)
+    placeholders_used: list[str] = []
+    for k, v in DEFAULTS.items():
+        if out.get(k) is None:
+            out[k] = v
+            placeholders_used.append(k)
+    out["from_db"] = True
+    out["placeholders_used"] = placeholders_used
+    return out
+
+
+def ftp_at(date_iso: str) -> int:
+    """Return FTP active on a given local date (YYYY-MM-DD).
+
+    Walks `ftp_history` for the most recent `effective_date` ≤ `date_iso`.
+    Falls back to `athlete_profile.ftp_w`, then to the placeholder default.
+    """
+    with open_db() as conn:
+        row = conn.execute(
+            "SELECT ftp_w FROM ftp_history "
+            "WHERE effective_date <= ? "
+            "ORDER BY effective_date DESC LIMIT 1",
+            (date_iso,),
+        ).fetchone()
+        if row is not None:
+            return int(row["ftp_w"])
+    return int(athlete_profile()["ftp_w"])
 
 
 # ---------------------------------------------------------------------------
