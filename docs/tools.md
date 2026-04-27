@@ -153,11 +153,54 @@ The Garmin MCP server (`@nicolasvegam/garmin-connect-mcp`) is **not autostarted*
 
 ---
 
-## Planned (M3+)
+## `compute_pmc.py`
 
-- `compute_pmc.py [--days N]` — recompute `pmc_daily` (default last 14d).
-- `current_form.py` — CTL/ATL/TSB today + ramp_7d + form_state.
-- `daily_briefing.py` — aggregate readiness, form, planned session, knee, group rides for today.
+Recompute `pmc_daily` from activities.
+
+```
+--backfill            full rebuild from earliest activity (or 365d ago)
+--recompute-days N    default 14 (always at least 14, to cover edits)
+--through YYYY-MM-DD  end date; default today (Europe/Stockholm)
+```
+
+**Output:** `{"computed_through": ..., "rows_written": N, "first_date": ..., "ctl": ..., "atl": ..., "tsb": ..., "form_state": "...", "seed_ctl": ..., "seed_atl": ..., "seed_date": ...}`
+
+Run `--backfill` once after a fresh sync; thereafter the incremental mode is enough.
+
+---
+
+## `current_form.py`
+
+Today's form state. Read-only against `pmc_daily`.
+
+**Output:**
+```json
+{
+  "as_of": "2026-04-27", "ctl": 47.0, "atl": 89.6, "tsb": -56.4,
+  "ramp_7d": 4.25, "form_state": "risky",
+  "ramp_warning": false, "ramp_critical": false,
+  "citation": "docs/training-science.md#tsb-interpretation-thresholds",
+  "history_14d": [{"date": ..., "tss": ..., "ctl": ..., "atl": ..., "tsb": ...}]
+}
+```
+
+`form_state` is one of: `crashing`, `risky`, `overreached`, `productive`, `neutral`, `race-ready`, `detrained`. See `docs/training-science.md#form-state-buckets`.
+
+---
+
+## `daily_briefing.py`
+
+Aggregate today's signals (form + wellness + plan + group rides + knee). The `/today` skill consumes this.
+
+```
+--date YYYY-MM-DD   default: today (Europe/Stockholm)
+```
+
+**Output:** `{date, weekday, form, wellness, today_session, group_rides, knee_alert, knee_recent, advisory: [...]}`. The `advisory` array is the prioritized list of headline signals (ramp warnings, HRV breaches, sleep deficits, knee status) the agent should surface first.
+
+---
+
+## Planned (M5+)
 - `generate_workout.py --type sst|vo2|threshold|endurance|recovery --duration <min>` — structured workout JSON.
 - `export_workout.py --in workout.json --format zwo|fit` — emit `.zwo` (always) and optionally `.fit` (with `--push-to-garmin`).
 - `plan_week.py --start YYYY-MM-DD` — 7-day skeleton respecting current form.
