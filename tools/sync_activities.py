@@ -277,16 +277,21 @@ def _sync_garmin_wellness(since: dt.date, conn: Any) -> dict[str, Any]:
                 """
                 INSERT INTO wellness_daily (
                   date, hrv_ms, body_battery, readiness, sleep_score,
-                  sleep_minutes, resting_hr, raw
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                  sleep_minutes, resting_hr, raw,
+                  stress_avg, stress_qualifier, avg_waking_respiration, min_hr
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(date) DO UPDATE SET
-                  hrv_ms        = excluded.hrv_ms,
-                  body_battery  = excluded.body_battery,
-                  readiness     = excluded.readiness,
-                  sleep_score   = excluded.sleep_score,
-                  sleep_minutes = excluded.sleep_minutes,
-                  resting_hr    = excluded.resting_hr,
-                  raw           = excluded.raw
+                  hrv_ms                 = excluded.hrv_ms,
+                  body_battery           = excluded.body_battery,
+                  readiness              = excluded.readiness,
+                  sleep_score            = excluded.sleep_score,
+                  sleep_minutes          = excluded.sleep_minutes,
+                  resting_hr             = excluded.resting_hr,
+                  raw                    = excluded.raw,
+                  stress_avg             = excluded.stress_avg,
+                  stress_qualifier       = excluded.stress_qualifier,
+                  avg_waking_respiration = excluded.avg_waking_respiration,
+                  min_hr                 = excluded.min_hr
                 """,
                 (
                     date_str,
@@ -297,6 +302,10 @@ def _sync_garmin_wellness(since: dt.date, conn: Any) -> dict[str, Any]:
                     row.get("sleep_minutes"),
                     row.get("resting_hr"),
                     json.dumps(row.get("raw", {}), default=str),
+                    row.get("stress_avg"),
+                    row.get("stress_qualifier"),
+                    row.get("avg_waking_respiration"),
+                    row.get("min_hr"),
                 ),
             )
             synced += 1
@@ -312,14 +321,21 @@ def _sync_garmin_wellness(since: dt.date, conn: Any) -> dict[str, Any]:
 
 def _fetch_one_day_wellness(client: Any, date_str: str) -> dict[str, Any]:
     """Best-effort wellness pull. Each metric in its own try so a single
-    failure doesn't lose the day."""
+    failure doesn't lose the day.
+
+    On Martin's Garmin (older watch firmware) HRV-Status and Training
+    Readiness consistently return empty containers — we still call them
+    so they'll start populating the day his watch supports them, but
+    we don't error on empty. The primary autonomic signal we *can* use
+    is daily stress (avg + qualifier) per docs/wellness.md.
+    """
     out: dict[str, Any] = {"raw": {}}
 
-    # HRV (overnight rMSSD). Method may be `get_hrv_data` on python-garminconnect.
+    # HRV (overnight rMSSD) — empty on watches without HRV-Status
     try:
         hrv_doc = client.get_hrv_data(date_str)
         out["raw"]["hrv"] = hrv_doc
-        if isinstance(hrv_doc, dict):
+        if isinstance(hrv_doc, dict) and hrv_doc:
             summary = hrv_doc.get("hrvSummary") or {}
             out["hrv_ms"] = summary.get("lastNightAvg") or summary.get("weeklyAvg")
     except Exception as e:  # noqa: BLE001
@@ -329,10 +345,8 @@ def _fetch_one_day_wellness(client: Any, date_str: str) -> dict[str, Any]:
     try:
         bb = client.get_body_battery(date_str)
         out["raw"]["body_battery"] = bb
-        if isinstance(bb, list) and bb:
-            # Garmin returns a per-day list; pick the day's max body battery
-            charged = bb[0].get("charged") if isinstance(bb[0], dict) else None
-            out["body_battery"] = charged
+        if isinstance(bb, list) and bb and isinstance(bb[0], dict):
+            out["body_battery"] = bb[0].get("charged")
     except Exception as e:  # noqa: BLE001
         out["raw"]["body_battery_error"] = str(e)
 
@@ -351,21 +365,25 @@ def _fetch_one_day_wellness(client: Any, date_str: str) -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         out["raw"]["sleep_error"] = str(e)
 
-    # Resting heart rate
+    # User summary — RHR + stress + respiration + min HR (the workable signals)
     try:
         summary = client.get_user_summary(date_str)
         out["raw"]["user_summary"] = summary
         if isinstance(summary, dict):
             out["resting_hr"] = summary.get("restingHeartRate")
+            out["stress_avg"] = summary.get("averageStressLevel")
+            out["stress_qualifier"] = summary.get("stressQualifier")
+            out["avg_waking_respiration"] = summary.get("avgWakingRespirationValue")
+            out["min_hr"] = summary.get("minHeartRate")
     except Exception as e:  # noqa: BLE001
         out["raw"]["user_summary_error"] = str(e)
 
-    # Training readiness
+    # Training readiness — also empty on older watches
     try:
         readiness = client.get_training_readiness(date_str)
         out["raw"]["readiness"] = readiness
-        if isinstance(readiness, list) and readiness:
-            out["readiness"] = readiness[0].get("score") if isinstance(readiness[0], dict) else None
+        if isinstance(readiness, list) and readiness and isinstance(readiness[0], dict):
+            out["readiness"] = readiness[0].get("score")
     except Exception as e:  # noqa: BLE001
         out["raw"]["readiness_error"] = str(e)
 

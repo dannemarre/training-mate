@@ -34,7 +34,7 @@ STRAVA_TOKEN_PATH = Path.home() / ".config" / "strava-mcp" / "config.json"
 GARMIN_TOKEN_DIR = Path.home() / ".garmin-mcp"
 GOOGLE_CALENDAR_TOKEN_DIR_DEFAULT = Path.home() / ".config" / "google-calendar-mcp"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def google_calendar_token_dir() -> Path:
@@ -323,6 +323,15 @@ MIGRATIONS: list[str] = [
       day_limit       INTEGER,
       endpoint        TEXT
     );
+    """,
+    # v2: extend wellness_daily with stress + respiration fields
+    # (HRV/Training Readiness aren't available on Martin's Garmin; stress is the
+    # workable autonomic-state signal alongside RHR drift and sleep.)
+    """
+    ALTER TABLE wellness_daily ADD COLUMN stress_avg INTEGER;
+    ALTER TABLE wellness_daily ADD COLUMN stress_qualifier TEXT;
+    ALTER TABLE wellness_daily ADD COLUMN avg_waking_respiration REAL;
+    ALTER TABLE wellness_daily ADD COLUMN min_hr INTEGER;
     """,
 ]
 

@@ -203,6 +203,37 @@ Output includes `tss.{planned, actual}`, `form.{start, end, ctl_delta}`, per-day
 
 ---
 
+## History & data hygiene
+
+### `data_status.py`
+Single-screen view of cache state + actionable gaps. The `/data-status` skill renders it for Martin.
+```
+--window-days N   for wellness coverage stats (default 90)
+```
+
+**Output:** `{schema_version, auth, activities: {count, oldest, newest, total_tss, by_source, top_sports, activities_with_streams}, pmc: {first_date, last_date, days_covered, current_ctl/atl/tsb, ramp_7d}, wellness: {window_days, days_with: {hrv, sleep, rhr, stress, ...}, gaps_in_window}, segments: {starred_count}, rate_limits: {...}, recommendations: [...]}`. The `recommendations` list is prioritized.
+
+### `backfill.py`
+Deep historical pull — Strava activities + Garmin wellness + segments + (optional) PMC recompute. Idempotent; safe to re-run.
+```
+--since YYYY-MM-DD       earliest date; default 2 years ago
+--skip-strava            don't pull activities
+--skip-wellness          don't pull Garmin wellness
+--skip-segments          don't sync starred segments
+--chunk-days N           wellness chunk size (default 30) — supports stop/resume
+--recompute-pmc          run compute_pmc --backfill after activities land
+--max-strava-pages N     cap Strava pages
+```
+
+Typical first-run pattern after auth bring-up:
+```
+uv run python tools/backfill.py --since 2024-01-01 --recompute-pmc
+```
+
+Strava backfill is fast (~1-2 min for 2 years). Garmin wellness is slow — chunked at 30 days × 0.7 s/day, so ~10 min for 6 months. The script can be killed and re-run; INSERT … ON CONFLICT keeps it idempotent.
+
+---
+
 ## Operating notes for the agent
 
 - **Always cite a doc** when giving training advice (CLAUDE.md rule #1). Tools return numbers; docs justify them.

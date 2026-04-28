@@ -6,10 +6,21 @@ How Garmin wellness signals feed into Claude's daily prescribe-or-back-off decis
 
 For *daily* prescribe-or-back-off decisions, in order:
 
-1. **HRV Status (overnight rMSSD)** — most reliable. PPG-derived rMSSD is validated as a substitute for ECG-derived rMSSD in healthy adults at rest.
+1. **HRV Status (overnight rMSSD)** — most reliable when available. PPG-derived rMSSD is validated as a substitute for ECG-derived rMSSD in healthy adults at rest.
 2. **Training Readiness** — useful sanity-check, but a Garmin black box. Don't gate decisions on it alone.
-3. **Body Battery** — trend-only. No published accuracy spec. Use it to *confirm* an HRV-based call, never override.
+3. **Body Battery** — trend-only. No published accuracy spec. Use it to *confirm* a primary signal, never override.
 4. **Sleep Score** — algorithmic. Use **sleep duration** directly (well-measured) rather than the score.
+
+### When HRV-Status isn't available
+
+Older Garmin watches don't track overnight HRV. `tools/sync_activities.py --include-wellness` will still call the endpoint (so it starts populating once the watch supports it) but the rows will have `hrv_ms=NULL`. **Fallback signal stack** (used by `tools/daily_briefing.py`):
+
+1. **Sleep duration** — `sleep_minutes` from `wellness_daily`. Already at the top of the gating ladder if HRV is absent.
+2. **RHR drift** — `resting_hr` vs 14-day rolling mean (>+5 bpm = soft flag).
+3. **Daily stress** — Garmin's `averageStressLevel` (`stress_avg`) and qualifier (`stress_qualifier` ∈ CALM / BALANCED / STRESSFUL / VERY_STRESSFUL). Sustained "STRESSFUL" days are the autonomic-state signal we have when HRV is unavailable.
+4. **Body Battery trend** — confirmation only.
+
+The combined call is still conservative: any two of (sleep <6 h, RHR >+5 bpm, stress qualifier ≥ STRESSFUL for ≥2 days) → swap planned hard for Z2.
 
 Sources: [Plews & Buchheit foundational paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC3936188/), [Marco Altini — HRV history](https://marcoaltini.substack.com/p/a-brief-history-of-heart-rate-variability), [Scientific Reports 2025 cyclists trial](https://www.nature.com/articles/s41598-025-13540-z).
 

@@ -75,6 +75,8 @@ Times always Europe/Stockholm in display; UTC in the DB.
 ### Tools (run via `uv run python tools/<name>.py [args]`)
 - `auth_status.py` — Strava + Garmin + Google Calendar token health.
 - `garmin_auth_setup.py` — interactive Garmin SSO + MFA (post-garth).
+- `data_status.py` — what's cached + actionable gaps + recommendations.
+- `backfill.py` — deep historical pull (Strava + Garmin wellness + segments + PMC).
 - `sync_activities.py` — pull Strava activities + Garmin wellness into SQLite.
 - `list_activities.py` / `get_activity.py` — query the cache.
 - `compute_pmc.py` / `current_form.py` / `estimate_ftp.py` — training load.
@@ -102,6 +104,7 @@ Times always Europe/Stockholm in display; UTC in the DB.
 
 ### Slash commands (`.claude/commands/*.md`)
 - `/sync` — pull latest activities + wellness, refresh PMC.
+- `/data-status` — what's cached + gaps + recommendations.
 - `/today` — daily coaching briefing (form + wellness + today's session + knee + group rides).
 - `/brief` — heavier daily briefing with tomorrow's preview (weather + fueling).
 - `/form` — quick CTL/ATL/TSB read-out.
